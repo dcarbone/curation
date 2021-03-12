@@ -12,10 +12,10 @@ import logging
 from datetime import datetime
 
 # Project imports
-from common import JINJA_ENV
+from common import JINJA_ENV, AOU_REQUIRED
 from utils import pipeline_logging
 from constants import bq_utils as bq_consts
-from resources import fields_for, CDM_TABLES
+from resources import fields_for
 import constants.cdr_cleaner.clean_cdr as cdr_consts
 from cdr_cleaner.cleaning_rules.base_cleaning_rule import BaseCleaningRule
 
@@ -24,9 +24,11 @@ LOGGER = logging.getLogger(__name__)
 SANDBOX_QUERY = JINJA_ENV.from_string("""
 CREATE OR REPLACE TABLE `{{project_id}}.{{sandbox_id}}.{{intermediary_table}}` AS (
 SELECT * FROM `{{project_id}}.{{dataset_id}}.{{cdm_table}}`
-WHERE 
-    ((GREATEST({{date_fields}}) IS NOT NULL) AND (GREATEST({{date_fields}}) < DATE("{{cutoff_date}}"))) AND
-    ((GREATEST({{datetime_fields}}) IS NOT NULL) AND (GREATEST({{datetime_fields}}) < TIMESTAMP("{{cutoff_date}}")))
+WHERE
+    (GREATEST({{date_fields}}) > DATE("{{cutoff_date}}"))
+{% if datetime_fields != '' %}
+    AND (GREATEST({{datetime_fields}}) > TIMESTAMP("{{cutoff_date}}"))
+{% endif %}
 )
 """)
 
@@ -84,7 +86,7 @@ class EhrSubmissionDataCutoff(BaseCleaningRule):
         :return: list of affected tables
         """
         tables = []
-        for table in CDM_TABLES:
+        for table in AOU_REQUIRED:
 
             # skips the person table
             if table == 'person':
@@ -117,11 +119,13 @@ class EhrSubmissionDataCutoff(BaseCleaningRule):
             for field in fields:
                 # appends only the date columns to the date_fields list
                 if field['type'] in ['date']:
-                    date_fields.append(field['name'])
+                    date_fields.append(
+                        f'COALESCE({field["name"]}, DATE("1900-01-01"))')
 
                 # appends only the datetime columns to the datetime_fields list
                 if field['type'] in ['timestamp']:
-                    datetime_fields.append(field['name'])
+                    datetime_fields.append(
+                        f'COALESCE({field["name"]}, TIMESTAMP("1900-01-01"))')
 
             # will render the queries only if a CDM table contains a date or datetime field
             # will ignore the CDM tables that do not have a date or datetime field
@@ -209,6 +213,7 @@ if __name__ == '__main__':
 
     ext_parser = parser.get_argument_parser()
     ext_parser.add_argument(
+        '-c',
         '--cutoff_date',
         dest='cutoff_date',
         action='store',
