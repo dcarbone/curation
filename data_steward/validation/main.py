@@ -17,6 +17,7 @@ from io import StringIO, open
 import dateutil
 from flask import Flask
 from googleapiclient.errors import HttpError
+from google.cloud import storage
 
 # Project imports
 import api_util
@@ -503,30 +504,39 @@ def process_hpo(hpo_id, force_run=False):
     """
     try:
         logging.info(f"Processing hpo_id {hpo_id}")
-        bucket = gcs_utils.get_hpo_bucket(hpo_id)
-        bucket_items = list_bucket(bucket)
-        folder_prefix = _get_submission_folder(bucket, bucket_items, force_run)
+
+        # get target hpo bucket name
+        hpo_bucket_name = gcs_utils.get_hpo_bucket(hpo_id)
+
+        # build cloud storage client
+        storage_client = gcs_utils.storage_client() # type: storage.Client
+
+        # retrieve lsit of bucket contents
+        bucket_items = list(storage_client.list_blobs(hpo_bucket_name))
+
+        # attempt to locate a usable submission directory from above list
+        folder_prefix = _get_submission_folder(hpo_bucket, bucket_items, force_run)
         if folder_prefix is None:
             logging.info(
-                f"No submissions to process in {hpo_id} bucket {bucket}")
+                f"No submissions to process in {hpo_id} bucket {hpo_bucket_name}")
         else:
             folder_items = []
             if is_valid_folder_prefix_name(folder_prefix):
                 # perform validation
                 folder_items = get_folder_items(bucket_items, folder_prefix)
-                summary = validate_submission(hpo_id, bucket, folder_items,
+                summary = validate_submission(hpo_id, hpo_bucket_name, folder_items,
                                               folder_prefix)
-                report_data = generate_metrics(hpo_id, bucket, folder_prefix,
+                report_data = generate_metrics(hpo_id, hpo_bucket_name, folder_prefix,
                                                summary)
             else:
                 # do not perform validation
                 report_data = generate_empty_report(hpo_id, folder_prefix)
-            perform_reporting(hpo_id, report_data, folder_items, bucket,
+            perform_reporting(hpo_id, report_data, folder_items, hpo_bucket_name,
                               folder_prefix)
     except BucketDoesNotExistError as bucket_error:
-        bucket = bucket_error.bucket
+        hpo_bucket_name = bucket_error.bucket
         logging.warning(
-            f"Bucket '{bucket}' configured for hpo_id '{hpo_id}' does not exist"
+            f"Bucket '{hpo_bucket_name}' configured for hpo_id '{hpo_id}' does not exist"
         )
     except HttpError as http_error:
         message = (f"Failed to process hpo_id '{hpo_id}' due to the following "
@@ -775,15 +785,52 @@ def initial_date_time_object(gcs_object_metadata):
     return date_created
 
 
-def _get_submission_folder(bucket, bucket_items, force_process=False):
+def _is_usable_directory(blob: storage.blob.Blob) -> bool:
+    """
+    contains all logic necessary to determine if a given directory in a bucket should be skipped during processing
+
+    :type blob: storage.blob.Blob
+    :param blob: singular blob in a given bucket
+    """
+
+    # ignore all blobs that are not "directories"
+    if blob.name.endswith('/') is False:
+        return False
+
+    # split blob name by "path"
+    item_path = blob.name.split('/')
+
+    # ignore items in "root" directory (e.g. blob with name of "supergreatfilename.txt")
+    if len(item_path) < 2 or item_path[-1] is '':
+        return False
+
+    # DC-343  special temporary case where we have to deal with a possible
+    # directory dumped into the bucket by 'ehr sync' process from RDR
+
+
+def _build_directory_list(bucket_items) -> set:
+    """
+    Constructs a set of unique directory names from provided bucket list
+
+    :param bucket_items: output from storage.Client.list_blobs()
+    :return: set of strings with path names
+    """
+    return set([
+        item.name
+        for item in bucket_items # type: storage.blob.Blob
+        if item.name.endswith('/')
+    ])
+
+
+def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
     """
     Get the string name of the most recent submission directory for validation
 
     Skips directories listed in IGNORE_DIRECTORIES with a case insensitive
     match.
 
-    :param bucket: string bucket name to look into
-    :param bucket_items: list of unicode string items in the bucket
+    :param bucket_name: string bucket name to look into
+    :param bucket_items: list of blobs within the bucket
     :param force_process: if True return most recently updated directory, even
         if it has already been processed.
     :returns: a directory prefix string of the form "<directory_name>/" if
@@ -794,18 +841,18 @@ def _get_submission_folder(bucket, bucket_items, force_process=False):
         has been processed and force_process is False or no submission
         directory exists
     """
-    # files in root are ignored here
-    all_folder_list = set([
-        item['name'].split('/')[0] + '/'
-        for item in bucket_items
-        if len(item['name'].split('/')) > 1
-    ])
+
+    # get list of directories
+    all_folder_list = _build_directory_list(bucket_items)
+
+    # fast exit path for empty dirs
+    if len(all_folder_list) == 0:
+        return None
 
     folder_datetime_list = []
     folders_with_submitted_files = []
     for folder_name in all_folder_list:
-        # DC-343  special temporary case where we have to deal with a possible
-        # directory dumped into the bucket by 'ehr sync' process from RDR
+
         ignore_folder = False
         for exp in common.IGNORE_DIRECTORIES:
             compiled_exp = re.compile(exp)
@@ -839,7 +886,7 @@ def _get_submission_folder(bucket, bucket_items, force_process=False):
         to_process_folder = folders_with_submitted_files[latest_datetime_index]
         if force_process:
             return to_process_folder
-        processed = _validation_done(bucket, to_process_folder)
+        processed = _validation_done(bucket_name, to_process_folder)
         if not processed:
             return to_process_folder
     return None
