@@ -520,7 +520,7 @@ def process_hpo(hpo_id, force_run=False):
         bucket_items = list(storage_client.list_blobs(hpo_bucket_name))
 
         # attempt to locate a usable submission directory from above list
-        folder_prefix = _get_submission_folder(hpo_bucket, bucket_items, force_run)
+        folder_prefix = _get_submission_folder(hpo_bucket_name, bucket_items, force_run)
         if folder_prefix is None:
             logging.info(
                 f"No submissions to process in {hpo_id} bucket {hpo_bucket_name}")
@@ -729,11 +729,18 @@ def perform_validation_on_file(file_name, found_file_names, hpo_id,
     return results, errors
 
 
-def _validation_done(bucket, folder):
-    if gcs_utils.get_metadata(bucket=bucket,
-                              name=folder + common.PROCESSED_TXT) is not None:
-        return True
-    return False
+def _validation_done(bucket_name: str, folder_name: str) -> bool:
+    """
+    Checks for the existence of the "processed" receipt file, which
+    indicates that a given directory has already been "processed"
+
+    :param bucket_name: Name of bucket to look for receipt file within
+    :param folder_name: Full path of directory, relative to bucket root,
+                        to look for receipt file within
+    :return: bool
+    """
+    return gcs_utils.get_bucket_instance(bucket_name).get_blob(
+        os.path.join(folder_name, common.PROCESSED_TXT)) is not None
 
 
 def basename(gcs_object_metadata):
@@ -785,7 +792,7 @@ def _is_usable_file(file_blob: storage.blob.Blob, retention_period: datetime.tim
     return True
 
 
-def list_submitted_bucket_items(directory_file_blobs):
+def build_usable_directory_file_list(directory_file_blobs):
     """
     Filters the provided list of "file" blobs to only those created less
     than {object_retention_days} ago
@@ -797,19 +804,9 @@ def list_submitted_bucket_items(directory_file_blobs):
     return list([
         blob
         for blob in directory_file_blobs # type: storage.blob.Blob
-        if _is_usable_file(file_blob=blob,
-                           retention_period=datetime.timedelta(days=30))
+        if blob and _is_usable_file(file_blob=blob,
+                                    retention_period=datetime.timedelta(days=30))
     ])
-
-
-def initial_date_time_object(gcs_object_metadata):
-    """
-    :param gcs_object_metadata: metadata as returned by list bucket
-    :return: datetime object
-    """
-    date_created = datetime.datetime.strptime(
-        gcs_object_metadata['timeCreated'], '%Y-%m-%dT%H:%M:%S.%fZ')
-    return date_created
 
 
 def _is_usable_directory(blob: storage.blob.Blob) -> bool:
@@ -886,26 +883,37 @@ def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
             for blob in bucket_items # type: storage.blob.Blob
             if blob.name is not folder_name and blob.name.startswith(folder_name)
         ]
-        submitted_file_blobs = list_submitted_bucket_items(
+
+        # filter "file" blobs by "usability"
+        usable_file_blobs = build_usable_directory_file_list(
             directory_file_blobs)
 
-        if submitted_file_blobs and submitted_file_blobs != []:
+        # if there were any usable files in the directory, find the most recently
+        # updated time across them all
+        if usable_file_blobs and usable_file_blobs != []:
             folders_with_submitted_files.append(folder_name)
-            latest_datetime = max([
-                updated_datetime_object(item) for item in submitted_file_blobs
-            ])
-            folder_datetime_list.append(latest_datetime)
+            folder_datetime_list.append(max([
+                item.updated() for item in usable_file_blobs
+            ]))
 
-    if folder_datetime_list and folder_datetime_list != []:
-        latest_datetime_index = folder_datetime_list.index(
-            max(folder_datetime_list))
-        to_process_folder = folders_with_submitted_files[latest_datetime_index]
-        if force_process:
-            return to_process_folder
-        processed = _validation_done(bucket_name, to_process_folder)
-        if not processed:
-            return to_process_folder
-    return None
+    # if there were no usable files present in any directory, log then return None
+    if len(folder_datetime_list) == 0:
+        logging.warn(f'Bucket {bucket_name} had no usable files in any of its directories')
+        return None
+
+    # find the index of the "directory" blob with the absolute newest child
+    latest_datetime_index = folder_datetime_list.index(
+        max(folder_datetime_list))
+
+    # directory name containing newest file
+    to_process_folder = folders_with_submitted_files[latest_datetime_index]
+    if force_process:
+        return to_process_folder
+
+    # check to see if this directory has already been processed
+    processed = _validation_done(bucket_name, to_process_folder)
+    if not processed:
+        return to_process_folder
 
 
 def _is_cdm_file(gcs_file_name):
