@@ -42,6 +42,9 @@ from validation.app_errors import (log_traceback, errors_blueprint,
 from validation.metrics import completeness, required_labs
 from validation.participants import identity_match as matching
 
+# pre-compile ignored directory regex
+_IGNORED_DIRECTORY_EXPRS = list(map(lambda exp: re.compile(exp), common.IGNORE_DIRECTORIES))
+
 app = Flask(__name__)
 
 # register application error handlers
@@ -493,6 +496,8 @@ def process_hpo(hpo_id, force_run=False):
     """
     runs validation for a single hpo_id
 
+    TODO: move to separate package and class
+
     :param hpo_id: which hpo_id to run for
     :param force_run: if True, process the latest submission whether or not it
         has already been processed before
@@ -757,6 +762,8 @@ def updated_datetime_object(gcs_object_metadata):
 
 def list_submitted_bucket_items(folder_bucketitems):
     """
+
+
     :param folder_bucketitems: List of Bucket items
     :return: list of files
     """
@@ -789,26 +796,27 @@ def _is_usable_directory(blob: storage.blob.Blob) -> bool:
     """
     contains all logic necessary to determine if a given directory in a bucket should be skipped during processing
 
-    :type blob: storage.blob.Blob
-    :param blob: singular blob in a given bucket
+    :param blob: specific storage blob
     """
 
-    # ignore all blobs that are not "directories"
+    # only "directories" allowed!
     if blob.name.endswith('/') is False:
-        return False
-
-    # split blob name by "path"
-    item_path = blob.name.split('/')
-
-    # ignore items in "root" directory (e.g. blob with name of "supergreatfilename.txt")
-    if len(item_path) < 2 or item_path[-1] is '':
         return False
 
     # DC-343  special temporary case where we have to deal with a possible
     # directory dumped into the bucket by 'ehr sync' process from RDR
+    for expr in _IGNORED_DIRECTORY_EXPRS:
+        if expr.match(blob.name.lower()):
+            logging.info(
+                f"Skipping {blob.name} directory.  It is not a submission directory."
+            )
+            return False
+
+    # if we get here, is probably directory of interest.
+    return True
 
 
-def _build_directory_list(bucket_items) -> set:
+def _build_usable_directory_list(bucket_items) -> set:
     """
     Constructs a set of unique directory names from provided bucket list
 
@@ -818,7 +826,7 @@ def _build_directory_list(bucket_items) -> set:
     return set([
         item.name
         for item in bucket_items # type: storage.blob.Blob
-        if item.name.endswith('/')
+        if item and _is_usable_directory(item)
     ])
 
 
@@ -842,41 +850,29 @@ def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
         directory exists
     """
 
-    # get list of directories
-    all_folder_list = _build_directory_list(bucket_items)
-
-    # fast exit path for empty dirs
-    if len(all_folder_list) == 0:
+    # build list of directories after processing exclusions
+    usable_directories = _build_usable_directory_list(bucket_items)
+    if len(usable_directories):
+        logging.warning(f'Bucket {bucket_name} has {len(bucket_items)} items, but none are processable directories!')
         return None
 
     folder_datetime_list = []
     folders_with_submitted_files = []
-    for folder_name in all_folder_list:
-
-        ignore_folder = False
-        for exp in common.IGNORE_DIRECTORIES:
-            compiled_exp = re.compile(exp)
-            if compiled_exp.match(folder_name.lower()):
-                logging.info(
-                    f"Skipping {folder_name} directory.  It is not a submission directory."
-                )
-                ignore_folder = True
-
-        if ignore_folder:
-            continue
-
+    for folder_name in usable_directories:
+        # build list of "file" objects under each directory
         # this is not in a try/except block because this follows a bucket read which is in a try/except
-        folder_bucket_items = [
-            item for item in bucket_items
-            if item['name'].startswith(folder_name)
+        directory_file_blobs = [
+            blob
+            for blob in bucket_items # type: storage.blob.Blob
+            if blob.name.startswith(folder_name)
         ]
-        submitted_bucket_items = list_submitted_bucket_items(
-            folder_bucket_items)
+        submitted_file_blobs = list_submitted_bucket_items(
+            directory_file_blobs)
 
-        if submitted_bucket_items and submitted_bucket_items != []:
+        if submitted_file_blobs and submitted_file_blobs != []:
             folders_with_submitted_files.append(folder_name)
             latest_datetime = max([
-                updated_datetime_object(item) for item in submitted_bucket_items
+                updated_datetime_object(item) for item in submitted_file_blobs
             ])
             folder_datetime_list.append(latest_datetime)
 
