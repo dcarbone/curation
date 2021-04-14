@@ -767,9 +767,11 @@ def updated_datetime_object(gcs_object_metadata):
                                       '%Y-%m-%dT%H:%M:%S.%fZ')
 
 
-def _is_usable_file(file_blob: storage.blob.Blob, retention_period: datetime.timedelta) -> bool:
+def _is_usable_file(file_blob: storage.blob.Blob,
+                    retention_period: datetime.timedelta) -> bool:
     """
-    Determines if a given file should be considered usable for this hpo import run
+    Determines if a given file should be considered potentially usable
+    for an hpo import run
 
     :param file_blob: GCS file blob
     :param retention_period: Period of time a file is considered usable
@@ -784,8 +786,10 @@ def _is_usable_file(file_blob: storage.blob.Blob, retention_period: datetime.tim
     if file_blob.name.split('/')[-1] in resources.IGNORE_LIST:
         return False
 
-    # exclude files that were created over 30 days ago
-    if file_blob.time_created < (datetime.datetime.today() + retention_period):
+    today = datetime.datetime.today()
+
+    # exclude files that were created over {retention_period} ago
+    if file_blob.time_created < (today + retention_period):
         return False
 
     # finally, assume this is acceptable for consideration
@@ -812,6 +816,9 @@ def build_usable_directory_file_list(directory_file_blobs):
 def _is_usable_directory(blob: storage.blob.Blob) -> bool:
     """
     contains all logic necessary to determine if a given directory in a bucket should be skipped during processing
+
+    TODO: eventually have this perform per-file created and updated date checking
+    TODO: response should be state object of some kind
 
     :param blob: specific storage blob
     """
