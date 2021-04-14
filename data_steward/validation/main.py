@@ -760,26 +760,46 @@ def updated_datetime_object(gcs_object_metadata):
                                       '%Y-%m-%dT%H:%M:%S.%fZ')
 
 
-def list_submitted_bucket_items(folder_bucketitems):
+def _is_usable_file(file_blob: storage.blob.Blob, retention_period: datetime.timedelta) -> bool:
+    """
+    Determines if a given file should be considered usable for this hpo import run
+
+    :param file_blob: GCS file blob
+    :param retention_period: Period of time a file is considered usable
+    :return: boolean determination of usability
     """
 
+    # fast exit, just in case...
+    if file_blob is None:
+        return False
 
-    :param folder_bucketitems: List of Bucket items
-    :return: list of files
+    # exclude files from static IGNORE_LIST (TODO: this...really needs a better name)
+    if file_blob.name.split('/')[-1] in resources.IGNORE_LIST:
+        return False
+
+    # exclude files that were created over 30 days ago
+    if file_blob.time_created < (datetime.datetime.today() + retention_period):
+        return False
+
+    # finally, assume this is acceptable for consideration
+    return True
+
+
+def list_submitted_bucket_items(directory_file_blobs):
     """
-    files_list = []
-    object_retention_days = 30
-    today = datetime.datetime.today()
-    for file_name in folder_bucketitems:
-        if basename(file_name) not in resources.IGNORE_LIST:
-            # in common.CDM_FILES or is_pii(basename(file_name)):
-            created_date = initial_date_time_object(file_name)
-            retention_time = datetime.timedelta(days=object_retention_days)
-            retention_start_time = datetime.timedelta(days=1)
-            age_threshold = created_date + retention_time - retention_start_time
-            if age_threshold > today:
-                files_list.append(file_name)
-    return files_list
+    Filters the provided list of "file" blobs to only those created less
+    than {object_retention_days} ago
+
+    :param directory_file_blobs: List of "file" blobs within a given "directory" blob
+    :return: filtered list of file blobs
+    """
+
+    return list([
+        blob
+        for blob in directory_file_blobs # type: storage.blob.Blob
+        if _is_usable_file(file_blob=blob,
+                           retention_period=datetime.timedelta(days=30))
+    ])
 
 
 def initial_date_time_object(gcs_object_metadata):
@@ -850,7 +870,7 @@ def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
         directory exists
     """
 
-    # build list of directories after processing exclusions
+    # build list of potentially processable directory names after filtering any matching exclusions
     usable_directories = _build_usable_directory_list(bucket_items)
     if len(usable_directories):
         logging.warning(f'Bucket {bucket_name} has {len(bucket_items)} items, but none are processable directories!')
@@ -859,12 +879,12 @@ def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
     folder_datetime_list = []
     folders_with_submitted_files = []
     for folder_name in usable_directories:
-        # build list of "file" objects under each directory
+        # build list of "file" objects under each directory, excluding the directory itself
         # this is not in a try/except block because this follows a bucket read which is in a try/except
         directory_file_blobs = [
             blob
             for blob in bucket_items # type: storage.blob.Blob
-            if blob.name.startswith(folder_name)
+            if blob.name is not folder_name and blob.name.startswith(folder_name)
         ]
         submitted_file_blobs = list_submitted_bucket_items(
             directory_file_blobs)
