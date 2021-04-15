@@ -739,7 +739,7 @@ def _validation_done(bucket_name: str, folder_name: str) -> bool:
                         to look for receipt file within
     :return: bool
     """
-    return gcs_utils.get_bucket_instance(bucket_name).get_blob(
+    return gcs_utils.get_bucket_instance(bucket_name=bucket_name).get_blob(
         os.path.join(folder_name, common.PROCESSED_TXT)) is not None
 
 

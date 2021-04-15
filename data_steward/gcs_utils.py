@@ -57,7 +57,9 @@ def hpo_gcs_path(hpo_id):
     return '/%s/' % bucket_name
 
 
-def storage_client(credentials=None, client_info=None, client_options=None) -> Optional[storage.Client]:
+def storage_client(credentials=None,
+                   client_info=None,
+                   client_options=None) -> Optional[storage.Client]:
     """
     Initializes and returns a probably useful storage.Client instance.
 
@@ -84,11 +86,14 @@ def storage_client(credentials=None, client_info=None, client_options=None) -> O
 
 
 def get_bucket_instance(bucket_name: str,
-                   timeout: Optional[Union[float, Tuple[float, float]]]=(5, 60),
-                   if_meta_generation_match: Optional[int]=None,
-                   if_metageneration_not_match: Optional[int]=None
-                   )->Optional[storage.Bucket]:
+                        timeout: Optional[Union[float, Tuple[float, float]]]=60,
+                        if_meta_generation_match: Optional[int]=None,
+                        if_metageneration_not_match: Optional[int]=None,
+                        client_credentials=None,
+                        client_info=None,
+                        client_options=None)->Optional[storage.Bucket]:
     """
+    TODO: don't like this...this is in support of not object-izing the hpo import process
     Helper func to retreive details about a specific bucket using default client values
 
     :param bucket_name: Name of bucket to retreive
@@ -99,13 +104,34 @@ def get_bucket_instance(bucket_name: str,
                                      blob's current metageneration matches the given value.
     :param if_metageneration_not_match: Make the operation conditional on whether the blob's
                                         current metageneration does not match the given value.
-
+    :type client_credentials: :class:`~google.auth.credentials.Credentials`
+    :param client_credentials: (Optional) The OAuth2 Credentials to use for this
+                        client. If not passed, falls back to the default
+                        inferred from the environment.
+    :type client_info: :class:`~google.api_core.client_info.ClientInfo`
+    :param client_info:
+        The client info used to send a user-agent string along with API
+        requests. If ``None``, then default info will be used. Generally,
+        you only need to set this if you're developing your own library
+        or partner tool.
+    :type client_options: :class:`~google.api_core.client_options.ClientOptions` or :class:`dict`
+    :param client_options: (Optional) Client options used to set user options on the client.
+        API Endpoint should be set through client_options.
     :return: storage.Bucket or None
     """
-    return storage_client().get_bucket(bucket_name,
-                                       timeout=timeout,
-                                       if_metageneration_match=if_meta_generation_match,
-                                       if_metageneration_not_match=if_metageneration_not_match)
+    # get client instance
+    client = storage_client(credentials=client_credentials,
+                            client_info=client_info,
+                            client_options=client_options)
+    # quickly test for client instantiation success
+    if client is None:
+        return None
+
+    # execute get bucket query
+    return client.get_bucket(bucket_or_name=bucket_name,
+                             timeout=timeout,
+                             if_metageneration_match=if_meta_generation_match,
+                             if_metageneration_not_match=if_metageneration_not_match)
 
 
 def create_service():
