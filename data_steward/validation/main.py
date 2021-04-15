@@ -768,13 +768,17 @@ def updated_datetime_object(gcs_object_metadata):
 
 
 def _is_usable_file(file_blob: storage.blob.Blob,
-                    retention_period: datetime.timedelta) -> bool:
+                    retention_window: datetime.timedelta,
+                    minimum_age: datetime.timedelta) -> bool:
     """
     Determines if a given file should be considered potentially usable
     for an hpo import run
 
     :param file_blob: GCS file blob
-    :param retention_period: Period of time a file is considered usable
+    :param retention_window: Maximum period of time past a file's creation time to
+                             consider it "usable"
+    :param minimum_age: Minimum amount of time past a file's last updated time to
+                        consider it "usable"
     :return: boolean determination of usability
     """
 
@@ -786,10 +790,14 @@ def _is_usable_file(file_blob: storage.blob.Blob,
     if file_blob.name.split('/')[-1] in resources.IGNORE_LIST:
         return False
 
-    today = datetime.datetime.today()
+    now = datetime.datetime.now()
 
-    # exclude files that were created over {retention_period} ago
-    if file_blob.time_created < (today + retention_period):
+    # if this file was created outside the retention period window, exclude.
+    if file_blob.time_created < (now - retention_window):
+        return False
+
+    # if this file was last updated within the minimum age window, exclude.
+    if file_blob.updated > (now - minimum_age):
         return False
 
     # finally, assume this is acceptable for consideration
@@ -804,12 +812,13 @@ def build_usable_directory_file_list(directory_file_blobs):
     :param directory_file_blobs: List of "file" blobs within a given "directory" blob
     :return: filtered list of file blobs
     """
-
+    # build list of files that match our filtering rules
     return list([
         blob
         for blob in directory_file_blobs # type: storage.blob.Blob
         if blob and _is_usable_file(file_blob=blob,
-                                    retention_period=datetime.timedelta(days=30))
+                                    retention_period=datetime.timedelta(days=30),
+                                    minimum_age=datetime.timedelta(minutes=5))
     ])
 
 
@@ -854,6 +863,20 @@ def _build_usable_directory_list(bucket_items) -> set:
     ])
 
 
+def _determine_missing_required_files(usable_file_blobs) -> set:
+    """
+    Compiles the list of required files that are NOT in the provided list of file blobs
+
+    :param usable_file_blobs: List of "usable" file blobs from a "directory"
+    :return: List of REQUIRED files that were NOT present in the provided list
+    """
+    return set([
+        req
+        for req in required_labs
+        if req not in [blob.name.split('/')[-1] for blob in usable_file_blobs]
+    ])
+
+
 def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
     """
     Get the string name of the most recent submission directory for validation
@@ -895,8 +918,14 @@ def _get_submission_folder(bucket_name: str, bucket_items, force_process=False):
         usable_file_blobs = build_usable_directory_file_list(
             directory_file_blobs)
 
-        # if there were any usable files in the directory, find the most recently
-        # updated time across them all
+        # determine if this directory is missing any of the expected required files
+        missing_required = _determine_missing_required_files(usable_file_blobs)
+        if len(missing_required) > 0:
+            logging.warn(f'Bucket {bucket_name} is missing {len(missing_required)} required files: {*missing_required,}')
+            continue
+
+        # if this directory has usable files _and_ all required files,
+        # find the most recently updated time across them all
         if usable_file_blobs and usable_file_blobs != []:
             folders_with_submitted_files.append(folder_name)
             folder_datetime_list.append(max([
