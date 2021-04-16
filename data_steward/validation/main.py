@@ -45,6 +45,7 @@ app = Flask(__name__)
 # register application error handlers
 app.register_blueprint(errors_blueprint)
 
+_GCS_DATE_FMT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 def all_required_files_loaded(result_items):
     for (file_name, _, _, loaded) in result_items:
@@ -790,9 +791,8 @@ def initial_date_time_object(gcs_object_metadata):
     :param gcs_object_metadata: metadata as returned by list bucket
     :return: datetime object
     """
-    date_created = datetime.datetime.strptime(
-        gcs_object_metadata['timeCreated'], '%Y-%m-%dT%H:%M:%S.%fZ')
-    return date_created
+    return datetime.datetime.strptime(gcs_object_metadata['timeCreated'],
+                                      _GCS_DATE_FMT)
 
 
 def updated_date_time_object(gcs_object_metadata):
@@ -804,7 +804,7 @@ def updated_date_time_object(gcs_object_metadata):
     :return: datetime.datetime
     """
     return datetime.datetime.strptime(gcs_object_metadata['updated'],
-                                      '%Y-%m-%dT%H:%M:%S.%fZ')
+                                      _GCS_DATE_FMT)
 
 def _get_missing_required_files(submitted_bucket_items):
     """
