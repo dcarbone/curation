@@ -523,7 +523,8 @@ def process_hpo(hpo_id, force_run=False):
         folder_prefix = _get_submission_folder(hpo_bucket_name, bucket_items, force_run)
         if folder_prefix is None:
             logging.info(
-                f"No submissions to process in {hpo_id} bucket {hpo_bucket_name}")
+                f"No submissions to process in {hpo_id} bucket {hpo_bucket_name}"
+            )
         else:
             folder_items = []
             if is_valid_folder_prefix_name(folder_prefix):
