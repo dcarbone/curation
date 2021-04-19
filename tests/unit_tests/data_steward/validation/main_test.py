@@ -428,7 +428,9 @@ class ValidationMainTest(TestCase):
                                   directory='submission',
                                   valid_created=True,
                                   valid_updated=True),
-        ].extend(
+        ]
+
+        mock_bucket_list.return_value.extend(
             self._build_mock_required_file_list(directory='SUBMISSION',
                                                 valid_created=True,
                                                 valid_updated=True))

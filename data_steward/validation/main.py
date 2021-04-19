@@ -778,9 +778,10 @@ def list_submitted_bucket_items(folder_bucketitems):
                                          month=tmp.month,
                                          day=tmp.day)
         updated_date = updated_date_time_object(file_meta)
+        retention_start_time = datetime.timedelta(days=1)
 
         # only add to return if the file is less than 30 days and more than 5 minutes old.
-        if created_date < (created_base - object_retention_days):
+        if tmp - retention_start_time < (now - object_retention_days):
             logging.warn(
                 f'Filtering file {fname} as it > 30 days old ({(created_base - created_date).days} days old)'
             )
