@@ -20,8 +20,8 @@ from validation import main
 # seed random with ns since epoch
 seed(time.time_ns())
 
-class ValidationMainTest(TestCase):
 
+class ValidationMainTest(TestCase):
     """
     _DT_FMT is the RFC3339 date format that gcloud timestamps are in because apparently
     the pythonic way is to have everybody define this themselves...
@@ -77,7 +77,7 @@ class ValidationMainTest(TestCase):
         out = {
             'name': os.path.join(directory, filename),
             'timeCreated': self._build_mock_file_created(valid_created),
-            'updated':self._build_mock_file_updated(valid_updated),
+            'updated': self._build_mock_file_updated(valid_updated),
         }
 
         if meta:
@@ -87,8 +87,8 @@ class ValidationMainTest(TestCase):
 
     def _build_mock_required_file_list(self,
                                        directory: str,
-                                       valid_created: bool=True,
-                                       valid_updated: bool=True,
+                                       valid_created: bool = True,
+                                       valid_updated: bool = True,
                                        file_meta=None):
         """
         _build_mock_file_list will construct a list of dicts describing each file that is
@@ -112,22 +112,22 @@ class ValidationMainTest(TestCase):
         out = list()
 
         for req in common.AOU_REQUIRED_FILES:
-            out.append(self._build_mock_file(filename=req,
-                                             directory=directory,
-                                             valid_created=valid_created,
-                                             valid_updated=valid_updated,
-                                             meta=(file_meta[req] if file_meta and file_meta[
-                                                 req] else None)))
+            out.append(
+                self._build_mock_file(filename=req,
+                                      directory=directory,
+                                      valid_created=valid_created,
+                                      valid_updated=valid_updated,
+                                      meta=(file_meta[req] if file_meta and
+                                            file_meta[req] else None)))
 
         return out
-
 
     def _build_mock_file_validation(self,
                                     filename: str,
                                     directory: str,
-                                    found: bool=True,
-                                    parsed: bool=True,
-                                    loaded: bool=True,
+                                    found: bool = True,
+                                    parsed: bool = True,
+                                    loaded: bool = True,
                                     err=None):
         """
         Constructs the expected Tuple as would be returned by the "perform_validation_on_file" func
@@ -141,16 +141,9 @@ class ValidationMainTest(TestCase):
         :return: Tuple[filename, found, parsed, loaded] OR Tuple[filename, error]
         """
         if err is None:
-            return (
-                os.path.join(directory, filename),
-                1 if found else 0,
-                1 if parsed else 0,
-                1 if loaded else 0
-            )
-        return (
-            os.path.join(directory, filename),
-            err
-        )
+            return (os.path.join(directory, filename), 1 if found else 0,
+                    1 if parsed else 0, 1 if loaded else 0)
+        return (os.path.join(directory, filename), err)
 
     @classmethod
     def setUpClass(cls):
@@ -226,10 +219,10 @@ class ValidationMainTest(TestCase):
         expected = 't2/'
         bucket_items = list()
         for i in range(3):
-            bucket_items.extend(self._build_mock_required_file_list(directory=f't{i}',
-                                                                    valid_updated=(i is 2),
-                                                                    valid_created=True))
-
+            bucket_items.extend(
+                self._build_mock_required_file_list(directory=f't{i}',
+                                                    valid_updated=(i is 2),
+                                                    valid_created=True))
 
         # mock bypasses api call and says no folders were processed
         with mock.patch(
@@ -435,19 +428,21 @@ class ValidationMainTest(TestCase):
                                   directory='submission',
                                   valid_created=True,
                                   valid_updated=True),
-        ].extend(self._build_mock_required_file_list(directory='SUBMISSION',
-                                                     valid_created=True,
-                                                     valid_updated=True))
+        ].extend(
+            self._build_mock_required_file_list(directory='SUBMISSION',
+                                                valid_created=True,
+                                                valid_updated=True))
 
         mock_validation.return_value = {
-            'results': list([
-                self._build_mock_file_validation(req,
-                                                 directory='SUBMISSION',
-                                                 found=True,
-                                                 parsed=True,
-                                                 loaded=True)
-                for req in common.AOU_REQUIRED_FILES
-            ]),
+            'results':
+                list([
+                    self._build_mock_file_validation(req,
+                                                     directory='SUBMISSION',
+                                                     found=True,
+                                                     parsed=True,
+                                                     loaded=True)
+                    for req in common.AOU_REQUIRED_FILES
+                ]),
             'errors': [],
             'warnings': []
         }

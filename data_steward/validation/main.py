@@ -47,6 +47,7 @@ app.register_blueprint(errors_blueprint)
 
 _GCS_DATE_FMT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
+
 def all_required_files_loaded(result_items):
     for (file_name, _, _, loaded) in result_items:
         if file_name in common.REQUIRED_FILES:
@@ -758,9 +759,11 @@ def list_submitted_bucket_items(folder_bucketitems):
 
     # when is we?
     now = datetime.datetime.now()
-    created_base = datetime.datetime(year=now.year, month=now.month, day=now.day)
+    created_base = datetime.datetime(year=now.year,
+                                     month=now.month,
+                                     day=now.day)
 
-    for file_meta in folder_bucketitems: # type: dict
+    for file_meta in folder_bucketitems:  # type: dict
         fname = basename(file_meta)
 
         # ignore the ignorable
@@ -771,14 +774,20 @@ def list_submitted_bucket_items(folder_bucketitems):
 
         # build timestamps
         tmp = initial_date_time_object(file_meta)
-        created_date = datetime.datetime(year=tmp.year, month=tmp.month, day=tmp.day)
+        created_date = datetime.datetime(year=tmp.year,
+                                         month=tmp.month,
+                                         day=tmp.day)
         updated_date = updated_date_time_object(file_meta)
 
         # only add to return if the file is less than 30 days and more than 5 minutes old.
         if created_date < (created_base - object_retention_days):
-            logging.warn(f'Filtering file {fname} as it > 30 days old ({(created_base - created_date).days} days old)')
+            logging.warn(
+                f'Filtering file {fname} as it > 30 days old ({(created_base - created_date).days} days old)'
+            )
         elif updated_date > (now - object_minimum_age):
-            logging.warn(f'Filtering file {fname} as it was last modified less than 5 minutes ago ({(now - updated_date).seconds} second(s) old)')
+            logging.warn(
+                f'Filtering file {fname} as it was last modified less than 5 minutes ago ({(now - updated_date).seconds} second(s) old)'
+            )
         else:
             logging.debug(f'Adding {fname} to files_list')
             files_list.append(file_meta)
@@ -806,6 +815,7 @@ def updated_date_time_object(gcs_object_metadata):
     return datetime.datetime.strptime(gcs_object_metadata['updated'],
                                       _GCS_DATE_FMT)
 
+
 def _get_missing_required_files(submitted_bucket_items):
     """
     _get_missing_required_files returns a list of the names of the "required"
@@ -823,16 +833,10 @@ def _get_missing_required_files(submitted_bucket_items):
         return common.AOU_REQUIRED_FILES
 
     # build list of file basenames, removing any paths
-    file_basenames = set([
-        basename(fname)
-        for fname in submitted_bucket_items
-    ])
+    file_basenames = set([basename(fname) for fname in submitted_bucket_items])
 
-    return set([
-        req
-        for req in common.AOU_REQUIRED_FILES
-        if req not in file_basenames
-    ])
+    return set(
+        [req for req in common.AOU_REQUIRED_FILES if req not in file_basenames])
 
 
 def _get_submission_folder(bucket, bucket_items, force_process=False):
@@ -896,7 +900,9 @@ def _get_submission_folder(bucket, bucket_items, force_process=False):
         # determine if the above is missing any of the "required" files
         missing_required = _get_missing_required_files(submitted_bucket_items)
         if len(missing_required) > 0:
-            logging.warn(f'Bucket {bucket} directory {folder_name} is missing the following required files: {*missing_required,}')
+            logging.warn(
+                f'Bucket {bucket} directory {folder_name} is missing the following required files: {*missing_required,}'
+            )
             continue
 
         if submitted_bucket_items and submitted_bucket_items != []:
