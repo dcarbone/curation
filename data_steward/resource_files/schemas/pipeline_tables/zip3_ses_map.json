@@ -1,0 +1,62 @@
+[
+  {
+    "type": "integer",
+    "name": "zip3",
+    "mode": "required",
+    "description": "Up-to-3-digit mask of ZIP code"
+  },
+  {
+    "type": "string",
+    "name": "zip3_as_string",
+    "mode": "required",
+    "description": "Representation of ZIP3 that is compatible with values in \"observation\" table \"value_as_string\" column"
+  },
+  {
+    "type": "double",
+    "name": "fraction_assisted_income",
+    "mode": "required",
+    "description": "Fraction of area population that is on an income assistance plan"
+  },
+  {
+    "type": "double",
+    "name": "fraction_high_school_edu",
+    "mode": "required",
+    "description": "Fraction of area population that have completed high school"
+  },
+  {
+    "type": "double",
+    "name": "median_income",
+    "mode": "required",
+    "description": "Median annual incoming of area population"
+  },
+  {
+    "type": "double",
+    "name": "fraction_no_health_ins",
+    "mode": "required",
+    "description": "Fraction of area population that does not have health insurance"
+  },
+  {
+    "type": "double",
+    "name": "fraction_poverty",
+    "mode": "required",
+    "description": "Fraction of population living below the poverty line"
+  },
+  {
+    "type": "double",
+    "name": "fraction_vacant_housing",
+    "mode": "required",
+    "description": "Fraction of area properties considered \"vacant\""
+  },
+  {
+    "type": "double",
+    "name": "deprivation_index",
+    "mode": "required",
+    "description": "https://www.graham-center.org/rgc/maps-data-tools/sdi/social-deprivation-index.html"
+  },
+  {
+    "type": "integer",
+    "name": "asc_year",
+    "mode": "required",
+    "description": "Year of American Community Survey from which values were sourced"
+  }
+]
