@@ -1,0 +1,18 @@
+version: "3"
+
+services:
+  curation-ci:
+    image: "dev-curation-ci"
+    build:
+      context: .
+      dockerfile: docker/ci.Dockerfile
+    volumes:
+      - "./data_steward:/home/circleci/project/curation/data_steward"
+      - "./tests:/home/circleci/project/curation/tests"
+      - "./tools:/home/circleci/project/curation/tools"
+      - "${GOOGLE_APPLICATION_CREDENTIALS}:/aou-res-curation-test.json"
+    environment:
+      DEV_PREFIX: "$$(whoami)"
+      GOOGLE_APPLICATION_CREDENTIALS: "/aou-res-curation-test.json"
+    env_file:
+      - docker/ci.env
